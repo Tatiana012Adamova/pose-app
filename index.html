@@ -3,41 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Smart Silhouette</title>
+    <title>AI Pose Director</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
-
     <style>
-        body { margin: 0; background: #000; font-family: sans-serif; overflow: hidden; color: white; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; color: white; }
         .container { position: relative; width: 100vw; height: 100vh; }
-        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-        
-        /* Слой с подсказками */
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: none; }
-        
-        #hint-box {
-            position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 20px;
-            border: 2px solid #00f2ff; text-align: center; min-width: 250px;
-        }
-
-        .controls { 
-            position: absolute; bottom: 50px; width: 100%; 
-            display: flex; justify-content: center; pointer-events: auto;
-        }
-
-        .shutter-btn {
-            width: 80px; height: 80px; background: white; border-radius: 50%;
-            border: 10px solid rgba(255,255,255,0.2); cursor: pointer; pointer-events: all;
-        }
-
-        /* Превью готового фото */
-        #preview-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,1); z-index: 200; flex-direction: column; align-items: center; justify-content: center;
-        }
-        #res-img { max-width: 85%; border: 3px solid #00f2ff; margin-bottom: 20px; }
+        video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        #ui-layer { position: absolute; top: 30px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
+        #hint { background: rgba(0,0,0,0.85); padding: 15px; border-radius: 20px; border: 2px solid #00f2ff; display: inline-block; min-width: 260px; }
+        .controls { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: center; z-index: 100; }
+        .snap-btn { width: 70px; height: 70px; background: white; border-radius: 50%; border: 6px solid #00f2ff; }
+        #save-screen { display: none; position: fixed; inset: 0; background: #000; z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
+        #res-photo { max-width: 85%; border: 2px solid #00f2ff; }
     </style>
 </head>
 <body>
@@ -45,72 +23,82 @@
 <div class="container">
     <video id="v" playsinline></video>
     <canvas id="c"></canvas>
-    
-    <div id="ui-layer">
-        <div id="hint-box">Загрузка ИИ...</div>
-        <div class="controls">
-            <button class="shutter-btn" id="snap"></button>
-        </div>
-    </div>
+    <div id="ui-layer"><div id="hint">ИИ изучает окружение...</div></div>
+    <div class="controls"><button class="snap-btn" onclick="capture()"></button></div>
 </div>
 
-<div id="preview-overlay">
-    <h2>Фото готово!</h2>
-    <img id="res-img">
-    <p>Зажмите фото, чтобы сохранить</p>
-    <button onclick="closePrev()" style="padding: 10px 20px; background: #00f2ff; border:none; border-radius:10px;">Вернуться</button>
+<div id="save-screen">
+    <img id="res-photo">
+    <p>Зажмите фото для сохранения</p>
+    <button onclick="location.reload()" style="padding:10px 20px; margin-top:15px; background:#00f2ff; border:none; border-radius:10px;">ВЕРНУТЬСЯ</button>
 </div>
 
 <script>
     const video = document.getElementById('v');
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
-    const hint = document.getElementById('hint-box');
-    const snapBtn = document.getElementById('snap');
+    const hint = document.getElementById('hint');
 
-    const pose = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-    });
+    const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+    pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6 });
 
-    pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+    // Эталонные смещения для "красивых поз"
+    const suggestions = {
+        standing: { label: "Разведите руки чуть шире для динамики", offset: 0.15 },
+        sitting: { label: "Сядьте вполоборота, вытяните одну ногу", offset: -0.2 }
+    };
 
     pose.onResults((results) => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
         if (!results.poseLandmarks) {
-            hint.innerHTML = "👤 Встаньте в кадр";
-            hint.style.color = "white";
+            hint.innerText = "👤 Встаньте в кадр полностью";
             return;
         }
 
-        // РИСУЕМ СИЛУЭТ (Генерация ИИ)
         const lm = results.poseLandmarks;
-        
-        // Рисуем мягкое свечение вокруг тела
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = "#00f2ff";
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 5;
+        const w = canvas.width;
+        const h = canvas.height;
+
+        // ОПРЕДЕЛЯЕМ КОНТЕКСТ (Сидит или Стоит)
+        // Если бедро и колено на близкой высоте — человек сидит
+        const isSitting = Math.abs(lm[23].y - lm[25].y) < 0.15;
+        const currentMode = isSitting ? suggestions.sitting : suggestions.standing;
+
+        // ГЕНЕРИРУЕМ ПРЕДЛОЖЕНИЕ (Рисуем "правильный" силуэт)
+        // Мы берем реальные точки пользователя, но ГЕНЕРИРУЕМ их смещение
         ctx.beginPath();
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "rgba(0, 242, 255, 0.6)";
+        ctx.setLineDash([10, 10]); // Пунктирная линия предложения
+
+        // Рисуем голову предложения
+        ctx.arc(lm[0].x * w, (lm[0].y * h) - 10, 35, 0, Math.PI * 2);
         
-        // Голова и плечи (создаем контур)
-        ctx.moveTo(lm[12].x * canvas.width, lm[12].y * canvas.height);
-        ctx.lineTo(lm[11].x * canvas.width, lm[11].y * canvas.height);
+        // Рисуем "предлагаемые" плечи (шире или под углом)
+        const off = currentMode.offset;
+        ctx.moveTo((lm[12].x + off) * w, lm[12].y * h);
+        ctx.lineTo((lm[11].x - off) * w, lm[11].y * h);
+        
         ctx.stroke();
+        ctx.setLineDash([]); // Возвращаем сплошную линию
 
-        // Проверка параметров
-        const dist = Math.abs(lm[11].x - lm[12].x);
-        const tilt = Math.abs(lm[11].y - lm[12].y);
-
-        if (tilt > 0.05) {
-            hint.innerHTML = "📐 Выровняйте горизонт";
-            hint.style.color = "#ff4444";
-        } else if (dist > 0.5) {
-            hint.innerHTML = "🚶 Слишком близко";
-            hint.style.color = "#ffbb00";
+        // АНАЛИЗ ТОЧНОСТИ СОВПАДЕНИЯ
+        const currentWidth = Math.abs(lm[11].x - lm[12].x);
+        if (isSitting) {
+            hint.innerHTML = `🧘 <b>Предложение:</b> ${currentMode.label}`;
+            hint.style.borderColor = "#ffbb00";
         } else {
-            hint.innerHTML = "✅ ПОЗА ИДЕАЛЬНА!";
-            hint.style.color = "#00ff88";
+            hint.innerHTML = `💃 <b>Предложение:</b> ${currentMode.label}`;
+            hint.style.borderColor = "#00f2ff";
+        }
+
+        // Если пользователь "попал" в предложение (например, развел руки)
+        if (currentWidth > 0.4 && !isSitting) {
+            hint.innerHTML = "✅ ОТЛИЧНО! ТАК ГРАЦИОЗНЕЕ!";
+            hint.style.borderColor = "#00ff88";
+            ctx.strokeStyle = "#00ff88";
+            ctx.setLineDash([]);
+            ctx.stroke();
         }
     });
 
@@ -124,18 +112,12 @@
     });
     camera.start();
 
-    snapBtn.onclick = () => {
-        const outCanvas = document.createElement('canvas');
-        outCanvas.width = video.videoWidth;
-        outCanvas.height = video.videoHeight;
-        outCanvas.getContext('2d').drawImage(video, 0, 0);
-        
-        document.getElementById('res-img').src = outCanvas.toDataURL('image/png');
-        document.getElementById('preview-overlay').style.display = 'flex';
-    };
-
-    function closePrev() {
-        document.getElementById('preview-overlay').style.display = 'none';
+    function capture() {
+        const temp = document.createElement('canvas');
+        temp.width = video.videoWidth; temp.height = video.videoHeight;
+        temp.getContext('2d').drawImage(video, 0, 0);
+        document.getElementById('res-photo').src = temp.toDataURL();
+        document.getElementById('save-screen').style.display = 'flex';
     }
 </script>
 </body>
