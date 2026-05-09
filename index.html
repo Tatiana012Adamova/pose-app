@@ -1,76 +1,31 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <!-- Эта строка ниже — страховка для кодировки -->
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Мое Фото-Приложение</title>
+    <title>Pose App</title>
     <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            background-color: #111; 
-            color: white; 
-            font-family: sans-serif;
-            height: 100vh;
-            overflow: hidden;
-        }
-        #webcam {
-            width: 100%;
-            height: 70vh;
-            object-fit: cover;
-            border-bottom: 2px solid #0088cc;
-        }
-        .controls {
-            padding: 20px;
-            text-align: center;
-        }
-        button {
-            background: #0088cc;
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 50px;
-            font-size: 1.2rem;
-            font-weight: bold;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        }
+        /* Это настройки внешнего вида: камера на весь экран */
+        body { margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; background: black; }
+        video { width: 100vw; height: 80vh; object-fit: cover; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 80vh; pointer-events: none; }
+        button { padding: 15px 30px; margin-top: 20px; font-size: 18px; border-radius: 10px; border: none; background: #0088cc; color: white; }
     </style>
 </head>
 <body>
-
+    <!-- Видео с камеры -->
     <video id="webcam" autoplay playsinline></video>
-    
-    <div class="controls">
-        <p>Камера готова к работе</p>
-        <button id="capture">СДЕЛАТЬ ФОТО</button>
-    </div>
+    <!-- Слой для трафарета (пока просто рамка для примера) -->
+    <canvas id="overlay"></canvas>
+    <button onclick="takePhoto()">Сделать фото</button>
 
     <script>
+        // Код для включения камеры
         const video = document.getElementById('webcam');
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+            .then(stream => { video.srcObject = stream; });
 
-        // Запрашиваем доступ к камере
-        async function setupCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user" }, // "user" для селфи, "environment" для задней
-                    audio: false 
-                });
-                video.srcObject = stream;
-            } catch (err) {
-                alert("Ошибка доступа к камере: " + err.name);
-            }
+        function takePhoto() {
+            alert("Фото сохранено! (Здесь будет логика сохранения)");
         }
-
-        setupCamera();
-
-        document.getElementById('capture').onclick = () => {
-            alert("Кнопка нажата! На следующем этапе мы добавим сюда ИИ и сохранение.");
-        };
     </script>
 </body>
 </html>
