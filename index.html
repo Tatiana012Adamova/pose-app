@@ -3,74 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Photo Pro Assistant</title>
-    <!-- Подключаем мощные библиотеки ИИ -->
+    <title>AI Photo Assistant Fix</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
 
     <style>
-        body { margin: 0; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; color: white; }
+        body { margin: 0; background: #000; font-family: sans-serif; overflow: hidden; color: white; }
         .app-container { position: relative; width: 100vw; height: 100vh; }
-        
         video { width: 100%; height: 100%; object-fit: cover; }
         
-        /* Слой подсказок ИИ */
         #ai-hints {
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 20px;
-            z-index: 100; text-align: center; border: 1px solid #00f2ff;
-            min-width: 200px; transition: all 0.3s;
+            position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); padding: 12px; border-radius: 15px;
+            z-index: 100; text-align: center; border: 2px solid #00f2ff; min-width: 250px;
         }
 
         /* Трафарет */
         #stencil {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 75%; height: 75%; z-index: 50; opacity: 0.5;
-            pointer-events: none; transition: filter 0.3s;
+            width: 70%; opacity: 0.6; z-index: 50; pointer-events: none;
+            filter: drop-shadow(0 0 10px rgba(0,242,255,0.5));
         }
 
         .bottom-ui {
-            position: absolute; bottom: 30px; width: 100%; z-index: 100;
-            display: flex; flex-direction: column; align-items: center; gap: 15px;
+            position: absolute; bottom: 40px; width: 100%; z-index: 100;
+            display: flex; flex-direction: column; align-items: center; gap: 20px;
         }
 
         .shutter {
-            width: 80px; height: 80px; background: white; border-radius: 50%;
-            border: 10px solid rgba(255,255,255,0.2); outline: none;
+            width: 70px; height: 70px; background: #fff; border-radius: 50%;
+            border: 5px solid rgba(255,255,255,0.3);
         }
 
-        .pose-shelf {
-            display: flex; gap: 10px; overflow-x: auto; width: 90%; padding: 10px;
-            scrollbar-width: none;
+        /* Инструкция после фото */
+        #save-instruction {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 1000; flex-direction: column;
+            align-items: center; justify-content: center; text-align: center;
         }
-        .pose-card {
-            min-width: 60px; height: 60px; background: rgba(255,255,255,0.1);
-            border-radius: 10px; display: flex; align-items: center; justify-content: center;
-        }
-        .pose-card img { width: 40px; filter: invert(1); }
+        #result-image { width: 80%; border: 2px solid white; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
 <div class="app-container">
-    <div id="ai-hints">Анализ кадра...</div>
+    <div id="ai-hints">Инициализация ИИ...</div>
     <video id="input_video" playsinline></video>
-    <img id="stencil" src="https://www.svgrepo.com/show/415332/model-fashion-female.svg">
+    
+    <!-- Трафарет (Вшитый SVG, чтобы точно отобразился) -->
+    <img id="stencil" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMjAgNTEyIj48cGF0aCBmaWxsPSJ3aGl0ZSIgZD0iTTIwOCIDQ4YzAgMjYuNS0yMS41IDQ4LTQ4IDQ4cy00OC0yMS41LTQ4LTQ4IDIxLjUtNDggNDgtNDggNDggMjEuNSA0OCA0OHptLTQ4IDY0YzI4LjcgMCA1MS4yLTIzIDUxLjItNTEuMi0zNi40IDctNTAuNSAyNy45LTY5LjggNDUuNi0yMSAxOS4zLTQ5LjYgNDkuMy0xMDkuMiA0OS4zdS04OC4yLTMwLTg4LjItMzBjLTM2LjQgMC02NiAzMC02NiA2NnYyMDBjMCAzNi40IDMwIDY2IDY2IDY2aDIwMGMzNi40IDAgNjYtMzAgNjYtNjZWMjU0YzAtMzYuNC0zMC02Ni02Ni02NnoiLz48L3N2Zz4=">
 
     <div class="bottom-ui">
-        <div class="pose-shelf" id="shelf">
-            <!-- Здесь будет много поз -->
-        </div>
         <button class="shutter" onclick="takePhoto()"></button>
+        <p style="font-size: 12px;">Нажмите, чтобы сделать фото</p>
     </div>
+</div>
+
+<!-- Окно сохранения -->
+<div id="save-instruction">
+    <h3>Готово!</h3>
+    <img id="result-image">
+    <p>Зажмите пальцем фото выше<br>и выберите <b>«Сохранить»</b></p>
+    <button onclick="closePreview()" style="background:none; border:1px solid white; color:white; padding:10px;">Вернуться к камере</button>
 </div>
 
 <script>
     const videoElement = document.getElementById('input_video');
     const hintElement = document.getElementById('ai-hints');
     const stencil = document.getElementById('stencil');
+    const saveScreen = document.getElementById('save-instruction');
+    const resultImg = document.getElementById('result-image');
 
-    // Настройка MediaPipe Pose
     const pose = new Pose({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
@@ -79,31 +82,19 @@
 
     pose.onResults((results) => {
         if (!results.poseLandmarks) {
-            updateHint("Человек не найден", "#ff4444");
+            updateHint("👤 Встаньте в кадр", "#fff");
             return;
         }
+        const lm = results.poseLandmarks;
+        const angle = Math.abs(lm[11].y - lm[12].y);
+        const dist = Math.abs(lm[11].x - lm[12].x);
 
-        const landmarks = results.poseLandmarks;
-        
-        // 1. Проверка наклона (горизонт)
-        const leftShoulder = landmarks[11];
-        const rightShoulder = landmarks[12];
-        const angle = Math.abs(leftShoulder.y - rightShoulder.y);
-        
-        // 2. Проверка дальности (по расстоянию между плечами)
-        const dist = Math.sqrt(Math.pow(leftShoulder.x - rightShoulder.x, 2));
-
-        // Логика советов
-        if (angle > 0.05) {
-            updateHint("Держите камеру ровнее", "#ffbb00");
-            stencil.style.filter = "invert(1) sepia(1) saturate(5) hue-rotate(-50deg)";
-        } else if (dist > 0.5) {
-            updateHint("Слишком близко! Отойдите", "#ffbb00");
-        } else if (dist < 0.2) {
-            updateHint("Слишком далеко! Подойдите", "#ffbb00");
+        if (angle > 0.04) {
+            updateHint("📐 Выровняйте горизонт!", "#ffbb00");
+        } else if (dist > 0.6) {
+            updateHint("🚶 Отойдите чуть дальше", "#00f2ff");
         } else {
-            updateHint("Идеальная позиция!", "#00ff88");
-            stencil.style.filter = "invert(1) brightness(2)";
+            updateHint("✅ Идеально! Снимайте", "#00ff88");
         }
     });
 
@@ -119,37 +110,20 @@
     });
     camera.start();
 
-    // Библиотека поз
-    const poseImages = [
-        'https://www.svgrepo.com/show/415332/model-fashion-female.svg',
-        'https://www.svgrepo.com/show/24419/sitting-man.svg',
-        'https://www.svgrepo.com/show/343015/person-shooting-selfie.svg',
-        'https://www.svgrepo.com/show/154740/yoga.svg',
-        'https://www.svgrepo.com/show/13591/fashion-model.svg'
-    ];
-
-    const shelf = document.getElementById('shelf');
-    poseImages.forEach(url => {
-        const div = document.createElement('div');
-        div.className = 'pose-card';
-        div.innerHTML = `<img src="${url}" onclick="setPose('${url}')">`;
-        shelf.appendChild(div);
-    });
-
-    function setPose(url) {
-        stencil.src = url;
-    }
-
     function takePhoto() {
         const canvas = document.createElement('canvas');
         canvas.width = videoElement.videoWidth;
         canvas.height = videoElement.videoHeight;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(videoElement, 0, 0);
-        const link = document.createElement('a');
-        link.download = `pro_photo.png`;
-        link.href = canvas.toDataURL();
-        link.click();
+        
+        // Показываем превью для сохранения
+        resultImg.src = canvas.toDataURL('image/png');
+        saveScreen.style.display = 'flex';
+    }
+
+    function closePreview() {
+        saveScreen.style.display = 'none';
     }
 </script>
 </body>
