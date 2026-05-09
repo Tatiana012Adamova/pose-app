@@ -3,76 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Photo Assistant Fix</title>
+    <title>AI Smart Silhouette</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
 
     <style>
         body { margin: 0; background: #000; font-family: sans-serif; overflow: hidden; color: white; }
-        .app-container { position: relative; width: 100vw; height: 100vh; }
-        video { width: 100%; height: 100%; object-fit: cover; }
+        .container { position: relative; width: 100vw; height: 100vh; }
+        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
         
-        #ai-hints {
-            position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.8); padding: 12px; border-radius: 15px;
-            z-index: 100; text-align: center; border: 2px solid #00f2ff; min-width: 250px;
+        /* Слой с подсказками */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: none; }
+        
+        #hint-box {
+            position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 20px;
+            border: 2px solid #00f2ff; text-align: center; min-width: 250px;
         }
 
-        /* Трафарет */
-        #stencil {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 70%; opacity: 0.6; z-index: 50; pointer-events: none;
-            filter: drop-shadow(0 0 10px rgba(0,242,255,0.5));
+        .controls { 
+            position: absolute; bottom: 50px; width: 100%; 
+            display: flex; justify-content: center; pointer-events: auto;
         }
 
-        .bottom-ui {
-            position: absolute; bottom: 40px; width: 100%; z-index: 100;
-            display: flex; flex-direction: column; align-items: center; gap: 20px;
+        .shutter-btn {
+            width: 80px; height: 80px; background: white; border-radius: 50%;
+            border: 10px solid rgba(255,255,255,0.2); cursor: pointer; pointer-events: all;
         }
 
-        .shutter {
-            width: 70px; height: 70px; background: #fff; border-radius: 50%;
-            border: 5px solid rgba(255,255,255,0.3);
-        }
-
-        /* Инструкция после фото */
-        #save-instruction {
+        /* Превью готового фото */
+        #preview-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 1000; flex-direction: column;
-            align-items: center; justify-content: center; text-align: center;
+            background: rgba(0,0,0,1); z-index: 200; flex-direction: column; align-items: center; justify-content: center;
         }
-        #result-image { width: 80%; border: 2px solid white; margin-bottom: 20px; }
+        #res-img { max-width: 85%; border: 3px solid #00f2ff; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-<div class="app-container">
-    <div id="ai-hints">Инициализация ИИ...</div>
-    <video id="input_video" playsinline></video>
+<div class="container">
+    <video id="v" playsinline></video>
+    <canvas id="c"></canvas>
     
-    <!-- Трафарет (Вшитый SVG, чтобы точно отобразился) -->
-    <img id="stencil" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMjAgNTEyIj48cGF0aCBmaWxsPSJ3aGl0ZSIgZD0iTTIwOCIDQ4YzAgMjYuNS0yMS41IDQ4LTQ4IDQ4cy00OC0yMS41LTQ4LTQ4IDIxLjUtNDggNDgtNDggNDggMjEuNSA0OCA0OHptLTQ4IDY0YzI4LjcgMCA1MS4yLTIzIDUxLjItNTEuMi0zNi40IDctNTAuNSAyNy45LTY5LjggNDUuNi0yMSAxOS4zLTQ5LjYgNDkuMy0xMDkuMiA0OS4zdS04OC4yLTMwLTg4LjItMzBjLTM2LjQgMC02NiAzMC02NiA2NnYyMDBjMCAzNi40IDMwIDY2IDY2IDY2aDIwMGMzNi40IDAgNjYtMzAgNjYtNjZWMjU0YzAtMzYuNC0zMC02Ni02Ni02NnoiLz48L3N2Zz4=">
-
-    <div class="bottom-ui">
-        <button class="shutter" onclick="takePhoto()"></button>
-        <p style="font-size: 12px;">Нажмите, чтобы сделать фото</p>
+    <div id="ui-layer">
+        <div id="hint-box">Загрузка ИИ...</div>
+        <div class="controls">
+            <button class="shutter-btn" id="snap"></button>
+        </div>
     </div>
 </div>
 
-<!-- Окно сохранения -->
-<div id="save-instruction">
-    <h3>Готово!</h3>
-    <img id="result-image">
-    <p>Зажмите пальцем фото выше<br>и выберите <b>«Сохранить»</b></p>
-    <button onclick="closePreview()" style="background:none; border:1px solid white; color:white; padding:10px;">Вернуться к камере</button>
+<div id="preview-overlay">
+    <h2>Фото готово!</h2>
+    <img id="res-img">
+    <p>Зажмите фото, чтобы сохранить</p>
+    <button onclick="closePrev()" style="padding: 10px 20px; background: #00f2ff; border:none; border-radius:10px;">Вернуться</button>
 </div>
 
 <script>
-    const videoElement = document.getElementById('input_video');
-    const hintElement = document.getElementById('ai-hints');
-    const stencil = document.getElementById('stencil');
-    const saveScreen = document.getElementById('save-instruction');
-    const resultImg = document.getElementById('result-image');
+    const video = document.getElementById('v');
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint-box');
+    const snapBtn = document.getElementById('snap');
 
     const pose = new Pose({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
@@ -81,49 +75,67 @@
     pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
 
     pose.onResults((results) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
         if (!results.poseLandmarks) {
-            updateHint("👤 Встаньте в кадр", "#fff");
+            hint.innerHTML = "👤 Встаньте в кадр";
+            hint.style.color = "white";
             return;
         }
-        const lm = results.poseLandmarks;
-        const angle = Math.abs(lm[11].y - lm[12].y);
-        const dist = Math.abs(lm[11].x - lm[12].x);
 
-        if (angle > 0.04) {
-            updateHint("📐 Выровняйте горизонт!", "#ffbb00");
-        } else if (dist > 0.6) {
-            updateHint("🚶 Отойдите чуть дальше", "#00f2ff");
+        // РИСУЕМ СИЛУЭТ (Генерация ИИ)
+        const lm = results.poseLandmarks;
+        
+        // Рисуем мягкое свечение вокруг тела
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = "#00f2ff";
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        
+        // Голова и плечи (создаем контур)
+        ctx.moveTo(lm[12].x * canvas.width, lm[12].y * canvas.height);
+        ctx.lineTo(lm[11].x * canvas.width, lm[11].y * canvas.height);
+        ctx.stroke();
+
+        // Проверка параметров
+        const dist = Math.abs(lm[11].x - lm[12].x);
+        const tilt = Math.abs(lm[11].y - lm[12].y);
+
+        if (tilt > 0.05) {
+            hint.innerHTML = "📐 Выровняйте горизонт";
+            hint.style.color = "#ff4444";
+        } else if (dist > 0.5) {
+            hint.innerHTML = "🚶 Слишком близко";
+            hint.style.color = "#ffbb00";
         } else {
-            updateHint("✅ Идеально! Снимайте", "#00ff88");
+            hint.innerHTML = "✅ ПОЗА ИДЕАЛЬНА!";
+            hint.style.color = "#00ff88";
         }
     });
 
-    function updateHint(text, color) {
-        hintElement.innerText = text;
-        hintElement.style.borderColor = color;
-        hintElement.style.color = color;
-    }
-
-    const camera = new Camera(videoElement, {
-        onFrame: async () => { await pose.send({image: videoElement}); },
+    const camera = new Camera(video, {
+        onFrame: async () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            await pose.send({image: video});
+        },
         width: 1280, height: 720
     });
     camera.start();
 
-    function takePhoto() {
-        const canvas = document.createElement('canvas');
-        canvas.width = videoElement.videoWidth;
-        canvas.height = videoElement.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(videoElement, 0, 0);
+    snapBtn.onclick = () => {
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = video.videoWidth;
+        outCanvas.height = video.videoHeight;
+        outCanvas.getContext('2d').drawImage(video, 0, 0);
         
-        // Показываем превью для сохранения
-        resultImg.src = canvas.toDataURL('image/png');
-        saveScreen.style.display = 'flex';
-    }
+        document.getElementById('res-img').src = outCanvas.toDataURL('image/png');
+        document.getElementById('preview-overlay').style.display = 'flex';
+    };
 
-    function closePreview() {
-        saveScreen.style.display = 'none';
+    function closePrev() {
+        document.getElementById('preview-overlay').style.display = 'none';
     }
 </script>
 </body>
